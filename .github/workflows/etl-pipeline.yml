@@ -1,0 +1,66 @@
+name: ETL Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:13
+        env:
+          POSTGRES_USER: user
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: etl_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+        
+    - name: Initialize database schema
+      run: |
+        PGPASSWORD=password psql -h localhost -U user -d etl_db -f sql/init/01_init_schema.sql
+        PGPASSWORD=password psql -h localhost -U user -d etl_db -f sql/dds/s_sql_dds/table/t_sql_source_unstructured.sql
+        PGPASSWORD=password psql -h localhost -U user -d etl_db -f sql/dds/s_sql_dds/table/t_sql_source_structured.sql
+        PGPASSWORD=password psql -h localhost -U user -d etl_db -f sql/dds/s_sql_dds/function/fn_etl_data_load.sql
+        PGPASSWORD=password psql -h localhost -U user -d etl_db -f sql/dds/s_sql_dds/function/fn_etl_data_load_test.sql
+        
+    - name: Run tests
+      env:
+        DB_HOST: localhost
+        DB_USER: user
+        DB_PASSWORD: password
+        DB_NAME: etl_db
+      run: |
+        python -m pytest tests/ -v
+        
+    - name: Build Docker image
+      run: |
+        docker build -t etl-data-pipeline .
+        
+    - name: Run ETL process
+      run: |
+        docker-compose up -d postgres
+        sleep 10
+        docker-compose run app
