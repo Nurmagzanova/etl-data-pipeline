@@ -1,5 +1,21 @@
 import psycopg2
-from config import DB_CONFIG
+import sys
+import os
+
+# Добавляем путь для импорта
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+try:
+    from config import DB_CONFIG
+except ImportError:
+    # Альтернативный способ если импорт не работает
+    DB_CONFIG = {
+        'host': 'localhost',
+        'port': '5432',
+        'database': 'etl_db',
+        'user': 'user',
+        'password': 'password'
+    }
 
 def init_database():
     """
@@ -7,7 +23,7 @@ def init_database():
     """
     try:
         conn = psycopg2.connect(**DB_CONFIG)
-        conn.autocommit = True  # Важно для DDL команд
+        conn.autocommit = True
         cur = conn.cursor()
         
         print("Инициализация базы данных...")
@@ -41,6 +57,27 @@ def init_database():
         print("Создание таблицы t_sql_source_structured...")
         cur.execute("""
             CREATE TABLE IF NOT EXISTS s_sql_dds.t_sql_source_structured (
+                id SERIAL PRIMARY KEY,
+                user_id VARCHAR(50) NOT NULL,
+                user_name VARCHAR(100),
+                age INTEGER,
+                salary NUMERIC(15,2),
+                purchase_amount NUMERIC(15,2),
+                product_category VARCHAR(50),
+                region VARCHAR(50),
+                customer_status VARCHAR(20),
+                transaction_count INTEGER,
+                effective_from DATE,
+                effective_to DATE,
+                current_flag BOOLEAN,
+                processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        
+        # Создание ТЕСТОВОЙ таблицы
+        print("Создание тестовой таблицы t_sql_source_structured_copy...")
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS s_sql_dds.t_sql_source_structured_copy (
                 id SERIAL PRIMARY KEY,
                 user_id VARCHAR(50) NOT NULL,
                 user_name VARCHAR(100),
@@ -142,6 +179,34 @@ def init_database():
             $$ LANGUAGE plpgsql;
         """)
         
+        # Создание ТЕСТОВОЙ ETL функции
+        print("Создание тестовой функции fn_etl_data_load_test...")
+        cur.execute("""
+            CREATE OR REPLACE FUNCTION s_sql_dds.fn_etl_data_load_test(
+                start_date DATE DEFAULT '2023-01-01',
+                end_date DATE DEFAULT '2023-12-31'
+            )
+            RETURNS INTEGER AS $$
+            DECLARE
+                test_count INTEGER;
+            BEGIN
+                -- Очистка тестовой таблицы в указанном диапазоне дат
+                DELETE FROM s_sql_dds.t_sql_source_structured_copy 
+                WHERE effective_from >= start_date AND effective_to <= end_date;
+                
+                -- Копирование данных из структурированной таблицы в тестовую
+                INSERT INTO s_sql_dds.t_sql_source_structured_copy 
+                SELECT * FROM s_sql_dds.t_sql_source_structured
+                WHERE effective_from >= start_date AND effective_to <= end_date;
+                
+                -- Получение количества скопированных записей
+                GET DIAGNOSTICS test_count = ROW_COUNT;
+                
+                RETURN test_count;
+            END;
+            $$ LANGUAGE plpgsql;
+        """)
+        
         print("База данных успешно инициализирована!")
         
     except Exception as e:
@@ -152,3 +217,6 @@ def init_database():
             cur.close()
         if 'conn' in locals():
             conn.close()
+
+if __name__ == "__main__":
+    init_database()
