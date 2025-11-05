@@ -1,9 +1,10 @@
 import pytest
 import psycopg2
+import os
 
-# Конфиг для подключения внутри Docker-сети
+# Адаптивный конфиг - работает везде
 DB_CONFIG = {
-    'host': 'localhost',  
+    'host': os.getenv('DB_HOST', 'localhost'),  # Берёт из окружения или localhost
     'port': '5432',
     'database': 'etl_db',
     'user': 'user',
@@ -11,6 +12,7 @@ DB_CONFIG = {
 }
 
 class TestETLPipeline:
+    # остальной код без изменений...
     
     def test_database_connection(self):
         """Тест подключения к базе данных"""
