@@ -3,7 +3,7 @@ import psycopg2
 
 # Конфиг для подключения внутри Docker-сети
 DB_CONFIG = {
-    'host': 'postgres',  # ← ИЗМЕНИТЕ с localhost на postgres
+    'host': 'localhost',  
     'port': '5432',
     'database': 'etl_db',
     'user': 'user',
