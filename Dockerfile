@@ -8,9 +8,10 @@ COPY requirements.txt .
 # Установка Python зависимостей
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Копирование исходного кода
+# Копирование ВСЕХ исходных файлов
 COPY data-pipeline/ ./data-pipeline/
 COPY sql/ ./sql/
+COPY tests/ ./tests/
 
 # Команда запуска
 CMD ["python", "data-pipeline/src/main.py"]

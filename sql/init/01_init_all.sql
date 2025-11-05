@@ -38,6 +38,24 @@ CREATE TABLE IF NOT EXISTS s_sql_dds.t_sql_source_structured (
     CONSTRAINT valid_date_range CHECK (effective_to >= effective_from)
 );
 
+-- ⭐⭐ ДОБАВИТЬ: ТЕСТОВАЯ ТАБЛИЦА ДЛЯ АВТОТЕСТОВ ⭐⭐
+CREATE TABLE IF NOT EXISTS s_sql_dds.t_sql_source_structured_copy (
+    id SERIAL PRIMARY KEY,
+    user_id VARCHAR(50) NOT NULL,
+    user_name VARCHAR(100),
+    age INTEGER,
+    salary NUMERIC(15,2),
+    purchase_amount NUMERIC(15,2),
+    product_category VARCHAR(50),
+    region VARCHAR(50),
+    customer_status VARCHAR(20),
+    transaction_count INTEGER,
+    effective_from DATE,
+    effective_to DATE,
+    current_flag BOOLEAN,
+    processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE INDEX IF NOT EXISTS idx_structured_user_id ON s_sql_dds.t_sql_source_structured(user_id);
 CREATE INDEX IF NOT EXISTS idx_structured_dates ON s_sql_dds.t_sql_source_structured(effective_from, effective_to);
 
@@ -119,5 +137,30 @@ BEGIN
     GET DIAGNOSTICS processed_count = ROW_COUNT;
     
     RETURN processed_count;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ⭐⭐ ДОБАВИТЬ: ТЕСТОВАЯ ФУНКЦИЯ ДЛЯ АВТОТЕСТОВ ⭐⭐
+CREATE OR REPLACE FUNCTION s_sql_dds.fn_etl_data_load_test(
+    start_date DATE DEFAULT '2023-01-01',
+    end_date DATE DEFAULT '2023-12-31'
+)
+RETURNS INTEGER AS $$
+DECLARE
+    test_count INTEGER;
+BEGIN
+    -- Очистка тестовой таблицы в указанном диапазоне дат
+    DELETE FROM s_sql_dds.t_sql_source_structured_copy 
+    WHERE effective_from >= start_date AND effective_to <= end_date;
+    
+    -- Копирование данных из структурированной таблицы в тестовую
+    INSERT INTO s_sql_dds.t_sql_source_structured_copy 
+    SELECT * FROM s_sql_dds.t_sql_source_structured
+    WHERE effective_from >= start_date AND effective_to <= end_date;
+    
+    -- Получение количества скопированных записей
+    GET DIAGNOSTICS test_count = ROW_COUNT;
+    
+    RETURN test_count;
 END;
 $$ LANGUAGE plpgsql;
