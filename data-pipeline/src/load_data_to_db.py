@@ -3,9 +3,8 @@ import pandas as pd  # Добавьте этот импорт
 from config import DB_CONFIG
 
 def load_data_to_db(df):
-    """
-    Загрузка данных в неструктурированную таблицу PostgreSQL
-    """
+    #Загрузка данных в неструктурированную таблицу PostgreSQL
+    
     try:
         conn = psycopg2.connect(**DB_CONFIG)
         cur = conn.cursor()
