@@ -12,10 +12,9 @@ DB_CONFIG = {
 }
 
 class TestETLPipeline:
-    # остальной код без изменений...
     
     def test_database_connection(self):
-        """Тест подключения к базе данных"""
+        #Тест подключения к базе данных
         try:
             conn = psycopg2.connect(**DB_CONFIG)
             cur = conn.cursor()
@@ -24,12 +23,12 @@ class TestETLPipeline:
             cur.close()
             conn.close()
             assert result[0] == 1
-            print("✅ Database connection test PASSED")
+            print("Database connection test PASSED")
         except Exception as e:
             pytest.fail(f"Database connection failed: {e}")
     
     def test_tables_exist(self):
-        """Тест существования таблиц"""
+        #Тест существования таблиц
         try:
             conn = psycopg2.connect(**DB_CONFIG)
             cur = conn.cursor()
@@ -49,13 +48,13 @@ class TestETLPipeline:
             assert 't_sql_source_unstructured' in tables
             assert 't_sql_source_structured' in tables
             assert 't_sql_source_structured_copy' in tables
-            print("✅ Tables existence test PASSED")
+            print("Tables existence test PASSED")
             
         except Exception as e:
             pytest.fail(f"Table existence test failed: {e}")
     
     def test_etl_function_parameters(self):
-        """Тест работы ETL функции с параметрами дат"""
+        #Тест работы ETL функции с параметрами дат
         try:
             conn = psycopg2.connect(**DB_CONFIG)
             cur = conn.cursor()
@@ -73,13 +72,13 @@ class TestETLPipeline:
             
             cur.close()
             conn.close()
-            print("✅ ETL function parameters test PASSED")
+            print("ETL function parameters test PASSED")
             
         except Exception as e:
             pytest.fail(f"ETL function test failed: {e}")
     
     def test_test_etl_function(self):
-        """Тест тестовой ETL функции"""
+        #Тест тестовой ETL функции
         try:
             conn = psycopg2.connect(**DB_CONFIG)
             cur = conn.cursor()
@@ -98,13 +97,13 @@ class TestETLPipeline:
             
             assert processed_count >= 0
             assert copy_count >= 0
-            print("✅ Test ETL function test PASSED")
+            print("Test ETL function test PASSED")
             
         except Exception as e:
             pytest.fail(f"Test ETL function failed: {e}")
     
     def test_data_quality(self):
-        """Тест качества данных в структурированной таблице"""
+        #Тест качества данных в структурированной таблице
         try:
             conn = psycopg2.connect(**DB_CONFIG)
             cur = conn.cursor()
@@ -126,17 +125,17 @@ class TestETLPipeline:
             
             cur.close()
             conn.close()
-            print("✅ Data quality test PASSED")
+            print("Data quality test PASSED")
             
         except Exception as e:
             pytest.fail(f"Data quality test failed: {e}")
 
     def test_etl_process_integration(self):
-        """Интеграционный тест всего ETL процесса"""
+        #Интеграционный тест всего ETL процесса
         try:
             # Это заглушка для локального тестирования
             assert True  # Заглушка
-            print("✅ Integration test PASSED")
+            print("Integration test PASSED")
             
         except Exception as e:
             pytest.fail(f"Integration test failed: {e}")
