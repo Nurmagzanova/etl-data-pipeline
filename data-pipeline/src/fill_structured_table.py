@@ -2,9 +2,7 @@ import psycopg2
 from config import DB_CONFIG  # Убрали src.
 
 def fill_structured_table(start_date='2023-01-01', end_date='2023-12-31'):
-    """
-    Запуск SQL-функции для очистки данных и загрузки в структурированную таблицу
-    """
+    #Запуск SQL-функции для очистки данных и загрузки в структурированную таблицу
     try:
         conn = psycopg2.connect(**DB_CONFIG)
         cur = conn.cursor()
