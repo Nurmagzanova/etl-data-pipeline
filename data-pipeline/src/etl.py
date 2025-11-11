@@ -4,9 +4,8 @@ from fill_structured_table import fill_structured_table
 from init_database import init_database
 
 def etl():
-    """
-    Верхнеуровневая ETL-функция без параметров
-    """
+
+    #Верхнеуровневая ETL-функция без параметров
     print("Запуск ETL процесса...")
     
     # 0. Инициализация базы данных
