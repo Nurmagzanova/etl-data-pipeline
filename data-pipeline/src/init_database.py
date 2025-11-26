@@ -207,7 +207,168 @@ def init_database():
             $$ LANGUAGE plpgsql;
         """)
         
+        # ========== ДОБАВЛЯЕМ DWH ТАБЛИЦЫ И ФУНКЦИИ ==========
+        
+        print("Создание DWH таблиц...")
+        
+        # Справочник клиентов
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS s_sql_dds.t_dim_customer (
+                customer_id SERIAL PRIMARY KEY,
+                customer_name VARCHAR(255) UNIQUE NOT NULL,
+                created_dt DATE DEFAULT CURRENT_DATE
+            );
+        """)
+        
+        # Справочник продуктов
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS s_sql_dds.t_dim_product (
+                product_id SERIAL PRIMARY KEY,
+                product_category VARCHAR(100) UNIQUE NOT NULL,
+                created_dt DATE DEFAULT CURRENT_DATE
+            );
+        """)
+        
+        # Справочник регионов
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS s_sql_dds.t_dim_region (
+                region_id SERIAL PRIMARY KEY,
+                region_name VARCHAR(100) UNIQUE NOT NULL,
+                created_dt DATE DEFAULT CURRENT_DATE
+            );
+        """)
+        
+        # Справочник статусов
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS s_sql_dds.t_dim_status (
+                status_id SERIAL PRIMARY KEY,
+                status_name VARCHAR(50) UNIQUE NOT NULL,
+                created_dt DATE DEFAULT CURRENT_DATE
+            );
+        """)
+        
+        # Фактовая таблица DWH
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS s_sql_dds.t_dm_task (
+                fact_id BIGSERIAL PRIMARY KEY,
+                customer_id INT REFERENCES s_sql_dds.t_dim_customer(customer_id),
+                product_id INT REFERENCES s_sql_dds.t_dim_product(product_id),
+                region_id INT REFERENCES s_sql_dds.t_dim_region(region_id),
+                status_id INT REFERENCES s_sql_dds.t_dim_status(status_id),
+                age INTEGER,
+                salary NUMERIC(15,2),
+                purchase_amount NUMERIC(15,2),
+                transaction_count INTEGER,
+                effective_from DATE,
+                effective_to DATE,
+                current_flag BOOLEAN,
+                created_dt DATE DEFAULT CURRENT_DATE
+            );
+        """)
+        
+        # Функция загрузки данных в DWH
+                # Создание функции fn_dm_data_load
+        print("Создание функции fn_dm_data_load...")
+        cur.execute("""
+            CREATE OR REPLACE FUNCTION s_sql_dds.fn_dm_data_load(
+                start_dt DATE DEFAULT NULL,
+                end_dt DATE DEFAULT NULL
+            )
+            RETURNS VOID AS $$
+            BEGIN
+                -- Вставка данных в справочник клиентов
+                INSERT INTO s_sql_dds.t_dim_customer (customer_name)
+                SELECT DISTINCT user_name 
+                FROM s_sql_dds.t_sql_source_structured
+                WHERE (start_dt IS NULL OR effective_from >= start_dt)
+                  AND (end_dt IS NULL OR effective_to <= end_dt)
+                ON CONFLICT (customer_name) DO NOTHING;
+
+                -- Вставка данных в справочник продуктов
+                INSERT INTO s_sql_dds.t_dim_product (product_category)
+                SELECT DISTINCT product_category 
+                FROM s_sql_dds.t_sql_source_structured
+                WHERE (start_dt IS NULL OR effective_from >= start_dt)
+                  AND (end_dt IS NULL OR effective_to <= end_dt)
+                ON CONFLICT (product_category) DO NOTHING;
+
+                -- Вставка данных в справочник регионов
+                INSERT INTO s_sql_dds.t_dim_region (region_name)
+                SELECT DISTINCT region 
+                FROM s_sql_dds.t_sql_source_structured
+                WHERE (start_dt IS NULL OR effective_from >= start_dt)
+                  AND (end_dt IS NULL OR effective_to <= end_dt)
+                ON CONFLICT (region_name) DO NOTHING;
+
+                -- Вставка данных в справочник статусов
+                INSERT INTO s_sql_dds.t_dim_status (status_name)
+                SELECT DISTINCT customer_status 
+                FROM s_sql_dds.t_sql_source_structured
+                WHERE (start_dt IS NULL OR effective_from >= start_dt)
+                  AND (end_dt IS NULL OR effective_to <= end_dt)
+                ON CONFLICT (status_name) DO NOTHING;
+
+                -- Вставка данных в фактовую таблицу
+                INSERT INTO s_sql_dds.t_dm_task (
+                    customer_id,
+                    product_id,
+                    region_id,
+                    status_id,
+                    age,
+                    salary,
+                    purchase_amount,
+                    transaction_count,
+                    effective_from,
+                    effective_to,
+                    current_flag
+                )
+                SELECT 
+                    c.customer_id,
+                    p.product_id,
+                    r.region_id,
+                    st.status_id,  -- ИСПРАВЛЕНО: st вместо s
+                    src.age,
+                    src.salary,
+                    src.purchase_amount,
+                    src.transaction_count,
+                    src.effective_from,
+                    src.effective_to,
+                    src.current_flag
+                FROM s_sql_dds.t_sql_source_structured src
+                LEFT JOIN s_sql_dds.t_dim_customer c ON src.user_name = c.customer_name
+                LEFT JOIN s_sql_dds.t_dim_product p ON src.product_category = p.product_category
+                LEFT JOIN s_sql_dds.t_dim_region r ON src.region = r.region_name
+                LEFT JOIN s_sql_dds.t_dim_status st ON src.customer_status = st.status_name
+                WHERE (start_dt IS NULL OR src.effective_from >= start_dt)
+                  AND (end_dt IS NULL OR src.effective_to <= end_dt);
+
+            END;
+            $$ LANGUAGE plpgsql;
+        """)
+        
+        # Создание представления
+        print("Создание представления v_dm_task...")
+        cur.execute("""
+            CREATE OR REPLACE VIEW s_sql_dds.v_dm_task AS
+            SELECT 
+                fact_id,
+                customer_id,
+                product_id,
+                region_id,
+                status_id,
+                age,
+                salary,
+                purchase_amount,
+                transaction_count,
+                effective_from,
+                effective_to,
+                current_flag,
+                created_dt
+            FROM s_sql_dds.t_dm_task;
+        """)
+        
         print("База данных успешно инициализирована!")
+        print("DWH таблицы созданы!")
         
     except Exception as e:
         print(f"Ошибка при инициализации базы данных: {e}")
