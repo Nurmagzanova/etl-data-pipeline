@@ -18,9 +18,7 @@ except ImportError:
     }
 
 def init_database():
-    """
-    Инициализация базы данных - создание схемы, таблиц и функций
-    """
+    #Инициализация базы данных - создание схемы, таблиц и функций
     try:
         conn = psycopg2.connect(**DB_CONFIG)
         conn.autocommit = True
