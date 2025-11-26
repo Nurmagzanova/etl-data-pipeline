@@ -4,9 +4,9 @@ from migrate_to_mysql import migrate_to_mysql
 import sys
 
 def main():
-    """
-    Основная функция запуска всего пайплайна
-    """
+    
+    #Основная функция запуска всего пайплайна
+    
     skip_mysql = '--skip-mysql' in sys.argv
     
     try:

@@ -4,9 +4,9 @@ from datetime import datetime, timedelta
 import random
 
 def get_dataset(rows=1000):
-    """
-    Генерация синтетических данных с аномалиями и историчностью типа 2 (SCD2)
-    """
+    
+    #Генерация синтетических данных с аномалиями и историчностью типа 2 (SCD2)
+    
     np.random.seed(42)
     
     # Базовые данные
