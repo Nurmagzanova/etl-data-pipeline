@@ -1,36 +1,41 @@
 from etl import etl
 from fill_dm_table import fill_dm_table
 from migrate_to_mysql import migrate_to_mysql
+from run_data_quality_checks import run_data_quality_checks
 import sys
 
 def main():
-    
-    #Основная функция запуска всего пайплайна
-    
+    """
+    Основная функция запуска всего пайплайна
+    """
     skip_mysql = '--skip-mysql' in sys.argv
     
     try:
-        print("=== Starting Complete Data Pipeline ===")
+        print("=== Запуск полного пайплайна данных ===")
         
         # Шаг 1: ETL процесс
-        print("\n1. Running ETL process...")
+        print("\n1. Выполнение ETL процесса...")
         etl()
         
         # Шаг 2: Заполнение DWH в PostgreSQL
-        print("\n2. Loading data to PostgreSQL DWH...")
+        print("\n2. Загрузка данных в PostgreSQL DWH...")
         fill_dm_table()
         
         # Шаг 3: Миграция в MySQL (пропускаем если указан флаг)
         if not skip_mysql:
-            print("\n3. Migrating data to MySQL DWH...")
+            print("\n3. Миграция данных в MySQL DWH...")
             migrate_to_mysql()
         else:
-            print("\n3. Skipping MySQL migration (--skip-mysql flag)")
+            print("\n3. Пропуск миграции в MySQL (--skip-mysql флаг)")
         
-        print("\n=== Complete Pipeline finished successfully ===")
+        # Шаг 4: Проверка качества данных
+        print("\n4. Запуск проверок качества данных...")
+        run_data_quality_checks()
+        
+        print("\n=== Полный пайплайн успешно завершен ===")
         
     except Exception as e:
-        print(f"Pipeline failed: {e}")
+        print(f"Ошибка в пайплайне: {e}")
         raise
 
 if __name__ == "__main__":

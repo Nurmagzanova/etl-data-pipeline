@@ -3,20 +3,20 @@ import pymysql
 from config import PG_CONFIG, MYSQL_CONFIG
 
 def migrate_to_mysql(start_dt=None, end_dt=None):
-    
-    # Мигрирует данные из PostgreSQL в MySQL используя pymysql
-    
+    """
+    Мигрирует данные из PostgreSQL в MySQL используя pymysql
+    """
     pg_conn = None
     mysql_conn = None
     
     try:
         # Подключение к PostgreSQL
-        print("Connecting to PostgreSQL...")
+        print("Подключение к PostgreSQL...")
         pg_conn = psycopg2.connect(**PG_CONFIG)
         pg_cursor = pg_conn.cursor()
         
         # Подключение к MySQL через pymysql
-        print("Connecting to MySQL...")
+        print("Подключение к MySQL...")
         mysql_conn = pymysql.connect(
             host=MYSQL_CONFIG['host'],
             port=MYSQL_CONFIG['port'],
@@ -28,7 +28,7 @@ def migrate_to_mysql(start_dt=None, end_dt=None):
         mysql_cursor = mysql_conn.cursor()
         
         # Выборка данных из представления PostgreSQL
-        print("Fetching data from PostgreSQL DWH...")
+        print("Получение данных из PostgreSQL DWH...")
         query = """
             SELECT fact_id, customer_id, product_id, region_id, status_id,
                    age, salary, purchase_amount, transaction_count,
@@ -41,18 +41,18 @@ def migrate_to_mysql(start_dt=None, end_dt=None):
         pg_cursor.execute(query, (start_dt, start_dt, end_dt, end_dt))
         data = pg_cursor.fetchall()
         
-        print(f"Fetched {len(data)} records from PostgreSQL DWH")
+        print(f"Получено {len(data)} записей из PostgreSQL DWH")
         
         if len(data) == 0:
-            print("No data to migrate!")
+            print("Нет данных для миграции!")
             return
         
         # Очистка staging таблицы в MySQL
-        print("Cleaning MySQL staging table...")
+        print("Очистка промежуточной таблицы в MySQL...")
         mysql_cursor.execute("DELETE FROM t_dm_stg_task")
         
         # Вставка данных в MySQL staging таблицу
-        print("Inserting data into MySQL staging table...")
+        print("Вставка данных в промежуточную таблицу MySQL...")
         insert_query = """
             INSERT INTO t_dm_stg_task 
             (fact_id, customer_id, product_id, region_id, status_id,
@@ -64,10 +64,10 @@ def migrate_to_mysql(start_dt=None, end_dt=None):
         mysql_cursor.executemany(insert_query, data)
         mysql_conn.commit()
         
-        print(f"Inserted {mysql_cursor.rowcount} records into MySQL staging table")
+        print(f"Вставлено {mysql_cursor.rowcount} записей в промежуточную таблицу MySQL")
         
         # Вызов процедуры загрузки в целевую таблицу MySQL
-        print("Loading data to MySQL target table...")
+        print("Загрузка данных в целевую таблицу MySQL...")
         
         # Для pymysql используем execute для вызова процедуры
         call_query = "CALL fn_dm_data_stg_to_dm_load(%s, %s)"
@@ -76,7 +76,7 @@ def migrate_to_mysql(start_dt=None, end_dt=None):
         # Получение результата процедуры
         result = mysql_cursor.fetchone()
         if result:
-            print(f"MySQL procedure result: {result[0]}")
+            print(f"Результат процедуры MySQL: {result[0]}")
         
         mysql_conn.commit()
         
@@ -84,11 +84,11 @@ def migrate_to_mysql(start_dt=None, end_dt=None):
         mysql_cursor.execute("SELECT COUNT(*) FROM t_dm_task")
         final_count = mysql_cursor.fetchone()[0]
         
-        print(f"Data migration completed successfully!")
-        print(f"Total records in MySQL DWH: {final_count}")
+        print("Миграция данных успешно завершена!")
+        print(f"Всего записей в MySQL DWH: {final_count}")
         
     except Exception as e:
-        print(f"Error migrating data: {e}")
+        print(f"Ошибка при миграции данных: {e}")
         if mysql_conn:
             mysql_conn.rollback()
         raise

@@ -11,7 +11,7 @@ def fill_dm_table(start_dt=None, end_dt=None):
         conn = psycopg2.connect(**DB_CONFIG)
         cursor = conn.cursor()
         
-        print("Starting DWH data load...")
+        print("Начало загрузки данных в DWH...")
         
         # Вызов функции загрузки данных в DWH
         if start_dt and end_dt:
@@ -39,12 +39,12 @@ def fill_dm_table(start_dt=None, end_dt=None):
         cursor.execute("SELECT COUNT(*) FROM s_sql_dds.t_dim_status")
         status_count = cursor.fetchone()[0]
         
-        print(f"DWH data loaded successfully!")
-        print(f"Fact records: {fact_count}")
-        print(f"Dimensions - Customers: {customer_count}, Products: {product_count}, Regions: {region_count}, Statuses: {status_count}")
+        print("Данные DWH успешно загружены!")
+        print(f"Фактовые записи: {fact_count}")
+        print(f"Справочники - Клиенты: {customer_count}, Продукты: {product_count}, Регионы: {region_count}, Статусы: {status_count}")
         
     except Exception as e:
-        print(f"Error loading DWH data: {e}")
+        print(f"Ошибка при загрузке данных в DWH: {e}")
         if conn:
             conn.rollback()
         raise

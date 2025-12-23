@@ -18,7 +18,9 @@ except ImportError:
     }
 
 def init_database():
-    #Инициализация базы данных - создание схемы, таблиц и функций
+    """
+    Инициализация базы данных - создание схемы, таблиц и функций
+    """
     try:
         conn = psycopg2.connect(**DB_CONFIG)
         conn.autocommit = True
@@ -264,8 +266,7 @@ def init_database():
             );
         """)
         
-        # Функция загрузки данных в DWH
-                # Создание функции fn_dm_data_load
+        # Функция загрузки данных в DWH (ИСПРАВЛЕННАЯ)
         print("Создание функции fn_dm_data_load...")
         cur.execute("""
             CREATE OR REPLACE FUNCTION s_sql_dds.fn_dm_data_load(
@@ -278,7 +279,8 @@ def init_database():
                 INSERT INTO s_sql_dds.t_dim_customer (customer_name)
                 SELECT DISTINCT user_name 
                 FROM s_sql_dds.t_sql_source_structured
-                WHERE (start_dt IS NULL OR effective_from >= start_dt)
+                WHERE user_name IS NOT NULL
+                  AND (start_dt IS NULL OR effective_from >= start_dt)
                   AND (end_dt IS NULL OR effective_to <= end_dt)
                 ON CONFLICT (customer_name) DO NOTHING;
 
@@ -286,7 +288,8 @@ def init_database():
                 INSERT INTO s_sql_dds.t_dim_product (product_category)
                 SELECT DISTINCT product_category 
                 FROM s_sql_dds.t_sql_source_structured
-                WHERE (start_dt IS NULL OR effective_from >= start_dt)
+                WHERE product_category IS NOT NULL
+                  AND (start_dt IS NULL OR effective_from >= start_dt)
                   AND (end_dt IS NULL OR effective_to <= end_dt)
                 ON CONFLICT (product_category) DO NOTHING;
 
@@ -294,7 +297,8 @@ def init_database():
                 INSERT INTO s_sql_dds.t_dim_region (region_name)
                 SELECT DISTINCT region 
                 FROM s_sql_dds.t_sql_source_structured
-                WHERE (start_dt IS NULL OR effective_from >= start_dt)
+                WHERE region IS NOT NULL
+                  AND (start_dt IS NULL OR effective_from >= start_dt)
                   AND (end_dt IS NULL OR effective_to <= end_dt)
                 ON CONFLICT (region_name) DO NOTHING;
 
@@ -302,7 +306,8 @@ def init_database():
                 INSERT INTO s_sql_dds.t_dim_status (status_name)
                 SELECT DISTINCT customer_status 
                 FROM s_sql_dds.t_sql_source_structured
-                WHERE (start_dt IS NULL OR effective_from >= start_dt)
+                WHERE customer_status IS NOT NULL
+                  AND (start_dt IS NULL OR effective_from >= start_dt)
                   AND (end_dt IS NULL OR effective_to <= end_dt)
                 ON CONFLICT (status_name) DO NOTHING;
 
@@ -324,7 +329,7 @@ def init_database():
                     c.customer_id,
                     p.product_id,
                     r.region_id,
-                    st.status_id,  -- ИСПРАВЛЕНО: st вместо s
+                    st.status_id,
                     src.age,
                     src.salary,
                     src.purchase_amount,
@@ -365,8 +370,240 @@ def init_database():
             FROM s_sql_dds.t_dm_task;
         """)
         
-        print("База данных успешно инициализирована!")
-        print("DWH таблицы созданы!")
+        # ========== ДОБАВЛЯЕМ DATA QUALITY КОМПОНЕНТЫ ==========
+        
+        print("Создание Data Quality таблиц...")
+        
+        # Таблица для результатов проверок качества данных
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS s_sql_dds.t_dq_check_results (
+                check_id SERIAL PRIMARY KEY,
+                check_type VARCHAR(50),
+                table_name VARCHAR(100),
+                column_name VARCHAR(100),
+                check_name VARCHAR(200),
+                execution_date TIMESTAMP(6) DEFAULT CURRENT_TIMESTAMP,
+                status VARCHAR(20),
+                expected_value NUMERIC,
+                actual_value NUMERIC,
+                error_threshold NUMERIC,
+                error_message VARCHAR(500)
+            );
+        """)
+        
+        # Создание индексов для таблицы DQ проверок
+        print("Создание индексов для DQ таблиц...")
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_dq_check_date 
+            ON s_sql_dds.t_dq_check_results(execution_date);
+            
+            CREATE INDEX IF NOT EXISTS idx_dq_check_status 
+            ON s_sql_dds.t_dq_check_results(status);
+            
+            CREATE INDEX IF NOT EXISTS idx_dq_check_type 
+            ON s_sql_dds.t_dq_check_results(check_type);
+        """)
+        
+        # Создание функции проверки качества данных (УПРОЩЕННАЯ версия)
+        print("Создание функции fn_dq_checks_load...")
+        cur.execute("""
+            CREATE OR REPLACE FUNCTION s_sql_dds.fn_dq_checks_load(
+                start_dt DATE DEFAULT NULL,
+                end_dt DATE DEFAULT NULL
+            )
+            RETURNS VOID AS $$
+            DECLARE
+                v_check_count INTEGER := 0;
+                v_passed_count INTEGER := 0;
+                v_failed_count INTEGER := 0;
+                v_error_message VARCHAR;
+                v_expected NUMERIC;
+                v_actual NUMERIC;
+            BEGIN
+                -- Очищаем предыдущие результаты за период
+                DELETE FROM s_sql_dds.t_dq_check_results 
+                WHERE execution_date::DATE >= COALESCE(start_dt, '1900-01-01'::DATE)
+                  AND execution_date::DATE <= COALESCE(end_dt, '2100-12-31'::DATE);
+                
+                -- 1. Проверка правильности: Сравнение суммы покупок
+                BEGIN
+                    v_check_count := v_check_count + 1;
+                    
+                    SELECT COALESCE(SUM(purchase_amount), 0) INTO v_expected
+                    FROM s_sql_dds.t_sql_source_structured
+                    WHERE (start_dt IS NULL OR effective_from >= start_dt)
+                      AND (end_dt IS NULL OR effective_to <= end_dt);
+                    
+                    SELECT COALESCE(SUM(purchase_amount), 0) INTO v_actual
+                    FROM s_sql_dds.t_dm_task
+                    WHERE (start_dt IS NULL OR effective_from >= start_dt)
+                      AND (end_dt IS NULL OR effective_to <= end_dt);
+                    
+                    IF ABS(v_expected - v_actual) <= 0.01 OR v_expected = 0 THEN
+                        v_passed_count := v_passed_count + 1;
+                        INSERT INTO s_sql_dds.t_dq_check_results 
+                        (check_type, table_name, check_name, status, expected_value, actual_value, error_threshold, error_message)
+                        VALUES ('correctness', 't_dm_task', 'Purchase amount sum comparison', 'passed', 
+                                v_expected, v_actual, 0.01, 'Sum difference within acceptable range');
+                    ELSE
+                        v_failed_count := v_failed_count + 1;
+                        INSERT INTO s_sql_dds.t_dq_check_results 
+                        (check_type, table_name, check_name, status, expected_value, actual_value, error_threshold, error_message)
+                        VALUES ('correctness', 't_dm_task', 'Purchase amount sum comparison', 'failed', 
+                                v_expected, v_actual, 0.01, 'Sum difference exceeds threshold');
+                    END IF;
+                EXCEPTION WHEN OTHERS THEN
+                    v_failed_count := v_failed_count + 1;
+                    INSERT INTO s_sql_dds.t_dq_check_results 
+                    (check_type, table_name, check_name, status, error_message)
+                    VALUES ('correctness', 't_dm_task', 'Purchase amount sum comparison', 'error', 
+                            'Error: ' || SQLERRM);
+                END;
+                
+                -- 2. Проверка полноты: Процент пропусков в customer_id
+                BEGIN
+                    v_check_count := v_check_count + 1;
+                    
+                    SELECT 
+                        COUNT(*) FILTER (WHERE customer_id IS NULL) * 100.0 / NULLIF(COUNT(*), 0)
+                    INTO v_actual
+                    FROM s_sql_dds.t_dm_task
+                    WHERE (start_dt IS NULL OR effective_from >= start_dt)
+                      AND (end_dt IS NULL OR effective_to <= end_dt);
+                    
+                    IF COALESCE(v_actual, 0) <= 5 THEN
+                        v_passed_count := v_passed_count + 1;
+                        INSERT INTO s_sql_dds.t_dq_check_results 
+                        (check_type, table_name, column_name, check_name, status, actual_value, error_threshold, error_message)
+                        VALUES ('completeness', 't_dm_task', 'customer_id', 'Null values percentage', 'passed', 
+                                v_actual, 5, 'Null values within acceptable range');
+                    ELSE
+                        v_failed_count := v_failed_count + 1;
+                        INSERT INTO s_sql_dds.t_dq_check_results 
+                        (check_type, table_name, column_name, check_name, status, actual_value, error_threshold, error_message)
+                        VALUES ('completeness', 't_dm_task', 'customer_id', 'Null values percentage', 'failed', 
+                                v_actual, 5, 'Too many null values');
+                    END IF;
+                EXCEPTION WHEN OTHERS THEN
+                    v_failed_count := v_failed_count + 1;
+                    INSERT INTO s_sql_dds.t_dq_check_results 
+                    (check_type, table_name, check_name, status, error_message)
+                    VALUES ('completeness', 't_dm_task', 'Null values check', 'error', 
+                            'Error: ' || SQLERRM);
+                END;
+                
+                -- 3. Проверка непротиворечивости: Дата окончания >= даты начала
+                BEGIN
+                    v_check_count := v_check_count + 1;
+                    
+                    SELECT COUNT(*) INTO v_actual
+                    FROM s_sql_dds.t_dm_task
+                    WHERE effective_to < effective_from
+                      AND (start_dt IS NULL OR effective_from >= start_dt)
+                      AND (end_dt IS NULL OR effective_to <= end_dt);
+                    
+                    IF v_actual = 0 THEN
+                        v_passed_count := v_passed_count + 1;
+                        INSERT INTO s_sql_dds.t_dq_check_results 
+                        (check_type, table_name, check_name, status, actual_value, error_threshold, error_message)
+                        VALUES ('consistency', 't_dm_task', 'Date range validation', 'passed', 
+                                v_actual, 0, 'All date ranges are valid');
+                    ELSE
+                        v_failed_count := v_failed_count + 1;
+                        INSERT INTO s_sql_dds.t_dq_check_results 
+                        (check_type, table_name, check_name, status, actual_value, error_threshold, error_message)
+                        VALUES ('consistency', 't_dm_task', 'Date range validation', 'failed', 
+                                v_actual, 0, 'Found invalid date ranges');
+                    END IF;
+                EXCEPTION WHEN OTHERS THEN
+                    v_failed_count := v_failed_count + 1;
+                    INSERT INTO s_sql_dds.t_dq_check_results 
+                    (check_type, table_name, check_name, status, error_message)
+                    VALUES ('consistency', 't_dm_task', 'Date range validation', 'error', 
+                            'Error: ' || SQLERRM);
+                END;
+                
+                -- 4. Проверка уникальности: Отсутствие дубликатов
+                BEGIN
+                    v_check_count := v_check_count + 1;
+                    
+                    WITH duplicates AS (
+                        SELECT customer_id, product_id, region_id, effective_from,
+                               COUNT(*) as duplicate_count
+                        FROM s_sql_dds.t_dm_task
+                        WHERE (start_dt IS NULL OR effective_from >= start_dt)
+                          AND (end_dt IS NULL OR effective_to <= end_dt)
+                        GROUP BY customer_id, product_id, region_id, effective_from
+                        HAVING COUNT(*) > 1
+                    )
+                    SELECT COUNT(*) INTO v_actual FROM duplicates;
+                    
+                    IF v_actual = 0 THEN
+                        v_passed_count := v_passed_count + 1;
+                        INSERT INTO s_sql_dds.t_dq_check_results 
+                        (check_type, table_name, check_name, status, actual_value, error_threshold, error_message)
+                        VALUES ('uniqueness', 't_dm_task', 'Duplicate records check', 'passed', 
+                                v_actual, 0, 'No duplicate records found');
+                    ELSE
+                        v_failed_count := v_failed_count + 1;
+                        INSERT INTO s_sql_dds.t_dq_check_results 
+                        (check_type, table_name, check_name, status, actual_value, error_threshold, error_message)
+                        VALUES ('uniqueness', 't_dm_task', 'Duplicate records check', 'failed', 
+                                v_actual, 0, 'Found duplicate records');
+                    END IF;
+                EXCEPTION WHEN OTHERS THEN
+                    v_failed_count := v_failed_count + 1;
+                    INSERT INTO s_sql_dds.t_dq_check_results 
+                    (check_type, table_name, check_name, status, error_message)
+                    VALUES ('uniqueness', 't_dm_task', 'Duplicate check', 'error', 
+                            'Error: ' || SQLERRM);
+                END;
+                
+                -- 5. Проверка валидности: Диапазон значений salary
+                BEGIN
+                    v_check_count := v_check_count + 1;
+                    
+                    SELECT COUNT(*) INTO v_actual
+                    FROM s_sql_dds.t_dm_task
+                    WHERE (salary < 0 OR salary > 1000000)
+                      AND (start_dt IS NULL OR effective_from >= start_dt)
+                      AND (end_dt IS NULL OR effective_to <= end_dt);
+                    
+                    IF v_actual = 0 THEN
+                        v_passed_count := v_passed_count + 1;
+                        INSERT INTO s_sql_dds.t_dq_check_results 
+                        (check_type, table_name, column_name, check_name, status, actual_value, error_threshold, error_message)
+                        VALUES ('validity', 't_dm_task', 'salary', 'Salary range validation', 'passed', 
+                                v_actual, 0, 'All salary values are valid');
+                    ELSE
+                        v_failed_count := v_failed_count + 1;
+                        INSERT INTO s_sql_dds.t_dq_check_results 
+                        (check_type, table_name, column_name, check_name, status, actual_value, error_threshold, error_message)
+                        VALUES ('validity', 't_dm_task', 'salary', 'Salary range validation', 'failed', 
+                                v_actual, 0, 'Found invalid salary values');
+                    END IF;
+                EXCEPTION WHEN OTHERS THEN
+                    v_failed_count := v_failed_count + 1;
+                    INSERT INTO s_sql_dds.t_dq_check_results 
+                    (check_type, table_name, check_name, status, error_message)
+                    VALUES ('validity', 't_dm_task', 'Salary validation', 'error', 
+                            'Error: ' || SQLERRM);
+                END;
+                
+                -- Итоговая статистика
+                INSERT INTO s_sql_dds.t_dq_check_results 
+                (check_type, table_name, check_name, status, expected_value, actual_value, error_message)
+                VALUES ('summary', 't_dm_task', 'Overall DQ check', 
+                        CASE WHEN v_failed_count = 0 THEN 'passed' ELSE 'failed' END,
+                        v_check_count, v_passed_count,
+                        CONCAT('Total: ', v_check_count, ', Passed: ', v_passed_count, ', Failed: ', v_failed_count));
+                
+            END;
+            $$ LANGUAGE plpgsql;
+        """)
+        
+        print("Все таблицы и функции успешно созданы!")
+        print("Data Quality компоненты добавлены!")
         
     except Exception as e:
         print(f"Ошибка при инициализации базы данных: {e}")
