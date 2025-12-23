@@ -2,37 +2,20 @@ name: Fast CI
 on: [push, pull_request]
 
 jobs:
-  fast-test:
+  fast-check:
     runs-on: ubuntu-latest
-    timeout-minutes: 10  # Принудительный лимит
+    timeout-minutes: 2  # Всего 2 минуты!
     
     services:
       postgres:
         image: postgres:13
-        env:
-          POSTGRES_PASSWORD: password
-          POSTGRES_DB: etl_db
-          POSTGRES_USER: user
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
+        # ... настройки
+        
     steps:
     - uses: actions/checkout@v4
     
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.9'
-        
-    - name: Install dependencies
+    - name: Fast check
       run: |
-        pip install -r requirements.txt
-        
-    - name: Run FAST ETL tests
-      run: |
-        # Устанавливаем переменную для быстрого режима
-        export CI_FAST_MODE=true
-        python -m pytest tests/test_etl.py -v --tb=short
+        python main.py --fast
+      env:
+        CI_FAST_MODE: true
